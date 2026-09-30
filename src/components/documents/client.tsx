@@ -6,6 +6,7 @@ import { ActionForm, Input, Select, Submit, FormActions, Grid, Textarea, Checkbo
 import { FileUploader } from "@/components/ui/file-uploader";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/toast";
+import { isAndroidApp } from "@/lib/native";
 
 type Opt = { value: string; label: string };
 
@@ -19,7 +20,8 @@ export function DocumentViewerButton({ documentId, version, label }: { documentI
       const r = await documentLink({ documentId, version, download });
       if (!r.ok) return toast("error", r.error);
       const d = r.data as { url: string; mimeType: string; fileName: string };
-      if (download) window.location.href = d.url;
+      // The Android app's WebView can't render PDFs inline, so hand them to the phone's viewer.
+      if (download || (isAndroidApp() && d.mimeType === "application/pdf")) window.location.href = d.url;
       else if (d.mimeType === "application/pdf" || d.mimeType.startsWith("image/")) setFile(d);
       else window.open(d.url, "_blank", "noopener");
     });
