@@ -1,0 +1,242 @@
+# Builds the Rosier People Android app.
+#
+#   • Every push to main that touches the app  → test APK (downloadable from the run's Artifacts)
+#   • Run manually (Actions → "Android APK" → Run workflow) → pick the server URL and build type
+#   • Push a tag like v1.2.0                   → signed release APK + Play Store bundle, attached to a GitHub Release
+#
+# One-time setup (repo → Settings → Secrets and variables → Actions):
+#   Variables: ROSIER_APP_URL              e.g. https://people.rosierfoods.com  (your deployed Rosier People server)
+#   Secrets (for signed release builds — create them with scripts/android-keystore.sh):
+#              ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "**/android/**"
+      - "**/mobile/**"
+      - "**/capacitor.config.ts"
+      - "**/scripts/mobile-sync.mjs"
+      - "**/package.json"
+      - "**/package-lock.json"
+      - ".github/workflows/android-apk.yml"
+  pull_request:
+    paths:
+      - "**/android/**"
+      - "**/mobile/**"
+      - "**/capacitor.config.ts"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Rosier People server the app opens (leave blank to use the ROSIER_APP_URL variable)"
+        required: false
+        type: string
+      build_type:
+        description: "What to build"
+        required: true
+        default: debug
+        type: choice
+        options: [debug, release, both]
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write # needed only to attach files to a GitHub Release on tag builds
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      IS_TAG: ${{ startsWith(github.ref, 'refs/tags/v') }}
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Find the project and check required files
+        id: proj
+        run: |
+          # Works whether the project is at the repo root or inside a folder (e.g. rosier-people/)
+          cfg="$(find . -maxdepth 3 -name capacitor.config.ts -not -path "*/node_modules/*" | head -1)"
+          if [ -z "$cfg" ]; then
+            echo "::error title=Project not found::capacitor.config.ts isn't in this repository. Upload the whole Rosier People project (see README → Android app)."
+            exit 1
+          fi
+          dir="$(dirname "$cfg")"
+          missing=""
+          for f in package.json package-lock.json android/gradlew android/gradle/wrapper/gradle-wrapper.jar android/app/build.gradle android/settings.gradle android/app/src/main/java/com/rosierfoods/people/MainActivity.java mobile/www/index.html scripts/mobile-sync.mjs; do
+            [ -e "$dir/$f" ] || missing="$missing $f"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Files missing from the repository::These files weren't uploaded:$missing — GitHub's web upload takes at most 100 files at a time and macOS hides folders starting with a dot. Upload with GitHub Desktop or git instead."
+            exit 1
+          fi
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+          echo "Project folder: $dir"
+
+      - name: Decide server URL, version and build type
+        id: cfg
+        env:
+          INPUT_URL: ${{ inputs.app_url }}
+          VAR_URL: ${{ vars.ROSIER_APP_URL }}
+          INPUT_TYPE: ${{ inputs.build_type }}
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: |
+          URL="${INPUT_URL:-$VAR_URL}"
+          URL="${URL%/}"
+          if [ -z "$URL" ]; then
+            echo "::error title=Server URL missing::Add a repository variable ROSIER_APP_URL (Settings → Secrets and variables → Actions → Variables) with your Rosier People address, e.g. https://people.rosierfoods.com — or enter it when running the workflow manually."
+            exit 1
+          fi
+          case "$URL" in
+            https://*) ;;
+            http://*) echo "::warning::$URL is not HTTPS. Sign-in only works over HTTPS in production — use http:// only for a test server on your own network." ;;
+            *) echo "::error::ROSIER_APP_URL must start with https://"; exit 1 ;;
+          esac
+
+          if [ "$IS_TAG" = "true" ]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TYPE="release"
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            TYPE="${INPUT_TYPE:-debug}"
+          fi
+          CODE=$(( 100 + GITHUB_RUN_NUMBER ))
+
+          if { [ "$TYPE" = "release" ] || [ "$TYPE" = "both" ]; } && [ "$HAS_KEYSTORE" != "true" ]; then
+            echo "::warning title=No signing key::Release signing secrets aren't set, so only a test (debug) APK will be built. Run scripts/android-keystore.sh to create them."
+            TYPE="debug"
+          fi
+
+          {
+            echo "url=$URL"
+            echo "version=$VERSION"
+            echo "code=$CODE"
+            echo "type=$TYPE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Server: $URL · version $VERSION ($CODE) · build: $TYPE"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ steps.proj.outputs.dir }}/package-lock.json
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          build-root-directory: ${{ steps.proj.outputs.dir }}/android
+
+      # --ignore-scripts skips the server-side Prisma step; the app shell only needs Capacitor.
+      - name: Install packages
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm ci --ignore-scripts
+
+      - name: Point the app at the server and sync Android project
+        env:
+          ROSIER_APP_URL: ${{ steps.cfg.outputs.url }}
+        working-directory: ${{ steps.proj.outputs.dir }}
+        run: npm run mobile:sync
+
+      - name: Build test APK
+        if: steps.cfg.outputs.type == 'debug' || steps.cfg.outputs.type == 'both'
+        working-directory: ${{ steps.proj.outputs.dir }}/android
+        env:
+          ANDROID_VERSION_CODE: ${{ steps.cfg.outputs.code }}
+          ANDROID_VERSION_NAME: ${{ steps.cfg.outputs.version }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleDebug
+
+      - name: Restore signing key
+        if: steps.cfg.outputs.type == 'release' || steps.cfg.outputs.type == 'both'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/rosier-release.jks"
+
+      - name: Build signed release APK and Play Store bundle
+        if: steps.cfg.outputs.type == 'release' || steps.cfg.outputs.type == 'both'
+        working-directory: ${{ steps.proj.outputs.dir }}/android
+        env:
+          ANDROID_VERSION_CODE: ${{ steps.cfg.outputs.code }}
+          ANDROID_VERSION_NAME: ${{ steps.cfg.outputs.version }}
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/rosier-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon assembleRelease bundleRelease
+
+      - name: Collect and name the files
+        id: out
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+          DIR: ${{ steps.proj.outputs.dir }}
+        run: |
+          mkdir -p dist
+          debug=$DIR/android/app/build/outputs/apk/debug/app-debug.apk
+          release=$DIR/android/app/build/outputs/apk/release/app-release.apk
+          bundle=$DIR/android/app/build/outputs/bundle/release/app-release.aab
+          [ -f "$debug" ]   && cp "$debug"   "dist/rosier-people-$VERSION-test.apk"
+          [ -f "$release" ] && cp "$release" "dist/rosier-people-$VERSION.apk"
+          [ -f "$bundle" ]  && cp "$bundle"  "dist/rosier-people-$VERSION.aab"
+          if [ -f "$release" ]; then
+            apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+            [ -n "$apksigner" ] && "$apksigner" verify --print-certs "$release" | head -3 || true
+          fi
+          ls -la dist
+          (cd dist && sha256sum -- * > SHA256SUMS.txt)
+
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: rosier-people-android-${{ steps.cfg.outputs.version }}-${{ steps.cfg.outputs.code }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Attach to GitHub Release
+        if: env.IS_TAG == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+
+      - name: Summary
+        env:
+          URL: ${{ steps.cfg.outputs.url }}
+          VERSION: ${{ steps.cfg.outputs.version }}
+          CODE: ${{ steps.cfg.outputs.code }}
+        run: |
+          {
+            echo "## Rosier People for Android — $VERSION ($CODE)"
+            echo ""
+            echo "Opens **$URL**"
+            echo ""
+            echo "| File | Size |"
+            echo "|---|---|"
+            for f in dist/*.apk dist/*.aab; do [ -f "$f" ] && echo "| \`$(basename "$f")\` | $(du -h "$f" | cut -f1) |"; done
+            echo ""
+            echo "**Install on a phone:** download the artifact zip below, copy the \`.apk\` to the phone, open it and allow *Install unknown apps* when asked."
+            echo "The \`-test.apk\` installs next to the real app as *Rosier People (test)*. The \`.aab\` is for uploading to Google Play."
+          } >> "$GITHUB_STEP_SUMMARY"
