@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rosier People — offline</title>
+  <style>
+    html,body{margin:0;height:100%;background:#F7F4ED;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#241A12}
+    main{min-height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;box-sizing:border-box}
+    svg{width:56px;height:56px;margin-bottom:20px}
+    h1{font-size:20px;margin:0 0 8px}
+    p{margin:0 0 24px;color:#7A6E62;font-size:15px;line-height:1.5;max-width:300px}
+    button{height:46px;padding:0 28px;border:0;border-radius:10px;background:#784900;color:#fff;font-size:15px;font-weight:600}
+    button:active{background:#5e3900}
+    small{margin-top:18px;color:#A89C8E;font-size:12px}
+  </style>
+</head>
+<body>
+  <main>
+    <svg viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#784900"/><path d="M13 29V11h8.2c3.9 0 6.3 2.2 6.3 5.5 0 2.6-1.5 4.4-3.9 5.1L28 29h-4.4l-3.3-6.9H17V29h-4Zm4-10.2h3.9c1.8 0 2.8-.9 2.8-2.3s-1-2.3-2.8-2.3H17v4.6Z" fill="#F7F4ED"/><circle cx="30" cy="11" r="2.6" fill="#E7E0CE"/></svg>
+    <h1>You're offline</h1>
+    <p>Rosier People needs an internet connection. Check your Wi-Fi or mobile data and try again.</p>
+    <button type="button" onclick="retry()">Try again</button>
+    <small id="status"></small>
+  </main>
+  <script src="app-url.js"></script>
+  <script>
+    // app-url.js is written by scripts/mobile-sync.mjs with the configured server URL.
+    function retry() {
+      document.getElementById("status").textContent = "Connecting…";
+      var start = window.ROSIER_APP_URL || (window.Capacitor && window.Capacitor.getServerUrl && window.Capacitor.getServerUrl()) || "/";
+      window.location.replace(start);
+    }
+    window.addEventListener("online", retry);
+  </script>
+</body>
+</html>

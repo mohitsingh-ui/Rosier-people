@@ -70,6 +70,59 @@ All 26 seeded people, IDs, PAN/Aadhaar/bank numbers, phones and emails are **fic
 
 ---
 
+## Android app
+
+`android/` is a native Android app (Capacitor 8) that opens your deployed Rosier People server. It isn't a separate codebase: every screen, rule and permission check comes from the same server as the web app. On top of the web version, it adds:
+
+- A home-screen app with the Rosier icon and splash screen.
+- GPS check-in. Location is asked for only when someone checks in.
+- Camera and file uploads for documents and receipts.
+- Payslips, letters and exports saved to **Downloads › Rosier People**, then opened in the phone's PDF viewer.
+- A branded "You're offline" screen with a retry button.
+- The hardware back button, and status-bar spacing handled correctly.
+
+### Build it on GitHub (no Android Studio needed)
+
+`.github/workflows/android-apk.yml` builds the app on GitHub's servers.
+
+1. Push this project to a GitHub repository.
+2. Go to **Settings → Secrets and variables → Actions → Variables** and add `ROSIER_APP_URL`, set to your live address (e.g. `https://people.rosierfoods.com`). It must be HTTPS.
+3. Go to **Actions → Android APK → Run workflow**. After about 5 minutes, download the APK from the run's **Artifacts**.
+
+| When | What you get |
+|---|---|
+| Push to `main` touching the app | `rosier-people-<version>-test.apk`. It installs as *Rosier People (test)*, next to the real app. |
+| Manual run | Your choice of server URL and debug / release / both. |
+| Push a tag, e.g. `git tag v1.1.0 && git push --tags` | A signed `rosier-people-1.1.0.apk` and a `.aab` for Google Play, attached to a GitHub Release. |
+
+**Signed release builds** need a signing key. Create it once:
+
+```bash
+bash scripts/android-keystore.sh      # needs Java; prints the 4 secrets to add
+```
+
+Add these as repository **secrets**: `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`. Keep the `.jks` file and its password safe: every future update must be signed with the same key. If the secrets are missing, the workflow still builds a test APK and warns you.
+
+The version name comes from the tag, or from `package.json` for untagged builds. The version code is the run number + 100, so every build can be installed over the previous one.
+
+### Build it on your own computer
+
+You'll need Android Studio (which includes the SDK) and Java 21.
+
+```bash
+npm install
+ROSIER_APP_URL=https://people.rosierfoods.com npm run mobile:sync
+npm run mobile:open                     # opens Android Studio → Run ▶
+# or, from a terminal:
+cd android && ./gradlew assembleDebug   # → android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+To test against `npm run dev` on your laptop from the Android emulator, use `ROSIER_APP_URL=http://10.0.2.2:3000`. For a real phone on the same Wi-Fi, use your laptop's IP address (e.g. `http://192.168.1.20:3000`). Plain `http` only works for these local test builds.
+
+**Where things live:** `capacitor.config.ts` (app ID `com.rosierfoods.people`, server URL, splash), `android/app/src/main/java/.../MainActivity.java` (downloads), `mobile/www/` (loading and offline pages), `mobile/assets/` (icon and splash sources).
+
+---
+
 ## Security model
 
 - **Sessions:** random token in an `httpOnly`, `SameSite=Lax` cookie; only its SHA-256 is stored. 12 hours, or 30 days with "remember me". Sign out everywhere from *Password & sessions*.

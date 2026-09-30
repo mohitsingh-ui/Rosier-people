@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="rosier_brown">#784900</color>
+    <color name="rosier_brown_dark">#5E3900</color>
+    <color name="rosier_cream">#F7F4ED</color>
+    <color name="colorPrimary">#784900</color>
+    <color name="colorPrimaryDark">#5E3900</color>
+    <color name="colorAccent">#A56312</color>
+</resources>

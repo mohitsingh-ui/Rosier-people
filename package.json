@@ -16,11 +16,18 @@
     "db:reset": "prisma migrate reset --force",
     "jobs:daily": "tsx scripts/daily-jobs.ts",
     "postinstall": "prisma generate",
-    "setup": "prisma migrate deploy && tsx prisma/seed.ts"
+    "setup": "prisma migrate deploy && tsx prisma/seed.ts",
+    "mobile:sync": "node scripts/mobile-sync.mjs",
+    "mobile:open": "npx cap open android",
+    "mobile:apk": "npm run mobile:sync && cd android && ./gradlew assembleDebug"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1142.0",
     "@aws-sdk/s3-request-presigner": "^3.1142.0",
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/splash-screen": "^8.0.2",
     "@hookform/resolvers": "^5.9.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
@@ -41,6 +48,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^26.6.3",

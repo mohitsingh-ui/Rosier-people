@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds install side-by-side with the real app and are labelled clearly -->
+<resources>
+    <string name="app_name">Rosier People (test)</string>
+    <string name="title_activity_main">Rosier People (test)</string>
+</resources>

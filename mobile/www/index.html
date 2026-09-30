@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en-IN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rosier People</title>
+  <style>
+    html,body{margin:0;height:100%;background:#F7F4ED;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#241A12}
+    main{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px}
+    .mark{width:64px;height:64px}
+    .dot{width:6px;height:6px;border-radius:50%;background:#A56312;display:inline-block;margin:0 3px;animation:b 1s infinite alternate}
+    .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+    @keyframes b{to{opacity:.25}}
+  </style>
+</head>
+<body>
+  <!-- Shown only for a moment: the app loads the Rosier People server configured in capacitor.config.ts -->
+  <main>
+    <svg class="mark" viewBox="0 0 40 40" aria-hidden="true"><rect width="40" height="40" rx="11" fill="#784900"/><path d="M13 29V11h8.2c3.9 0 6.3 2.2 6.3 5.5 0 2.6-1.5 4.4-3.9 5.1L28 29h-4.4l-3.3-6.9H17V29h-4Zm4-10.2h3.9c1.8 0 2.8-.9 2.8-2.3s-1-2.3-2.8-2.3H17v4.6Z" fill="#F7F4ED"/><circle cx="30" cy="11" r="2.6" fill="#E7E0CE"/></svg>
+    <div><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
+  </main>
+</body>
+</html>
