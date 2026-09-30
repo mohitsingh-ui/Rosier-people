@@ -1,0 +1,15 @@
+# Local PostgreSQL for Rosier People:  docker compose up -d
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: rosier_people
+    ports:
+      - "5432:5432"
+    volumes:
+      - rosier_pg:/var/lib/postgresql/data
+volumes:
+  rosier_pg:
