@@ -1,0 +1,89 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-accent: "Yathra One", Georgia, serif;
+
+  --color-brand: #784900;
+  --color-brand-2: #A56312;
+  --color-brand-50: #FBF6EC;
+  --color-brand-100: #F4E9D3;
+  --color-cream: #E7E0CE;
+  --color-canvas: #F7F4ED;
+  --color-ink: #241A12;
+  --color-ink-2: #4A3E33;
+  --color-muted: #7A6E62;
+  --color-faint: #A89C8E;
+  --color-line: #E8E1D3;
+  --color-line-2: #D9D0BE;
+  --color-soft: #F3EEE4;
+
+  --color-ok: #3E7A52;
+  --color-ok-bg: #EAF3EC;
+  --color-warn: #A86B12;
+  --color-warn-bg: #FBF1DE;
+  --color-bad: #B0452F;
+  --color-bad-bg: #F9E8E3;
+  --color-info: #3D6A8C;
+  --color-info-bg: #E7EFF5;
+  --color-plum: #6F4A7E;
+  --color-plum-bg: #F1EAF4;
+
+  --radius-card: 14px;
+  --radius-ctl: 10px;
+  --shadow-card: 0 1px 2px rgb(36 26 18 / 0.04), 0 2px 8px -2px rgb(36 26 18 / 0.05);
+  --shadow-pop: 0 12px 32px -8px rgb(36 26 18 / 0.18), 0 2px 6px rgb(36 26 18 / 0.06);
+}
+
+@layer base {
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-canvas text-ink font-sans antialiased;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  h1, h2, h3, h4 { @apply text-ink font-semibold tracking-tight; }
+  ::selection { background: #E7E0CE; }
+  /* Grid items never force the page wider than the screen */
+  .grid > * { min-width: 0; }
+  :focus-visible { outline: 2px solid var(--color-brand-2); outline-offset: 2px; border-radius: 6px; }
+  input[type="date"]::-webkit-calendar-picker-indicator { opacity: 0.55; cursor: pointer; }
+}
+
+@layer components {
+  .card { @apply bg-white border border-line rounded-card shadow-card; }
+  .ctl {
+    @apply w-full h-10 rounded-ctl border border-line-2 bg-white px-3 text-[14px] text-ink placeholder:text-faint
+      transition-colors hover:border-faint focus:border-brand-2 focus:outline-none focus:ring-2 focus:ring-brand-2/15
+      disabled:bg-soft disabled:text-muted aria-invalid:border-bad;
+  }
+  textarea.ctl { @apply h-auto py-2.5 min-h-24 leading-relaxed; }
+  select.ctl { @apply pr-8 appearance-none bg-no-repeat; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%237A6E62' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-position: right 10px center; }
+  .label { @apply block text-[12.5px] font-medium text-ink-2 mb-1.5; }
+  .eyebrow { @apply text-[11px] font-semibold uppercase tracking-[0.08em] text-muted; }
+  .kv-k { @apply text-[12.5px] text-muted; }
+  .kv-v { @apply text-[14px] text-ink font-medium; }
+  .tbl { @apply w-full text-left text-[13.5px]; }
+  .tbl thead th { @apply px-4 py-2.5 text-[11.5px] font-semibold uppercase tracking-wide text-muted bg-soft/60 border-b border-line whitespace-nowrap; }
+  .tbl tbody td { @apply px-4 py-3 border-b border-line align-middle; }
+  .tbl tbody tr:last-child td { @apply border-b-0; }
+  .tbl tbody tr { @apply transition-colors; }
+  .tbl tbody tr:hover { @apply bg-brand-50/50; }
+  .skeleton { @apply bg-soft rounded-md animate-pulse; }
+  .accent { font-family: var(--font-accent); }
+}
+
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* Org chart connectors (top-down tree) */
+.org-tree ul { display: flex; justify-content: center; padding-top: 22px; position: relative; }
+.org-tree li { list-style: none; position: relative; padding: 22px 8px 0; display: flex; flex-direction: column; align-items: center; }
+.org-tree li::before, .org-tree li::after { content: ""; position: absolute; top: 0; right: 50%; width: 50%; height: 22px; border-top: 1.5px solid var(--color-line-2); }
+.org-tree li::after { right: auto; left: 50%; border-left: 1.5px solid var(--color-line-2); }
+.org-tree li:only-child::before, .org-tree li:only-child::after { display: none; }
+.org-tree li:only-child { padding-top: 0; }
+.org-tree li:first-child::before, .org-tree li:last-child::after { border: 0 none; }
+.org-tree li:last-child::before { border-right: 1.5px solid var(--color-line-2); border-radius: 0 10px 0 0; }
+.org-tree li:first-child::after { border-radius: 10px 0 0 0; }
+.org-tree ul ul::before { content: ""; position: absolute; top: 0; left: 50%; height: 22px; border-left: 1.5px solid var(--color-line-2); }
+.org-tree > ul { padding-top: 0; }
