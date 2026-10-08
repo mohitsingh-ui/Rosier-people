@@ -1,14 +1,50 @@
-name: Build Android APK
+name: Android APK
+
+# Builds the Rosier People Android app (Capacitor 8 shell around the live server).
+#   push to main (app files) → debug test APK   rosier-people-<version>-test.apk
+#   manual run               → your choice of server URL and debug / release / both
+#   tag vX.Y.Z               → signed release APK + AAB, attached to a GitHub Release
 
 on:
-  workflow_dispatch:
   push:
     branches: [main]
+    tags: ["v*"]
+    paths:
+      - "android/**"
+      - "mobile/**"
+      - "capacitor.config.ts"
+      - "scripts/mobile-sync.mjs"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+    inputs:
+      app_url:
+        description: "Server URL the app opens (blank = ROSIER_APP_URL repo variable)"
+        required: false
+        default: ""
+      build_type:
+        description: "What to build"
+        type: choice
+        options: [debug, release, both]
+        default: debug
+
+permissions:
+  contents: write # needed to publish the GitHub Release on tag builds
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # `npm ci` runs `prisma generate` (postinstall), and prisma.config.ts reads
+  # DATABASE_URL. Generating the client never connects, so a placeholder is enough.
+  DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
 
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -23,25 +59,110 @@ jobs:
         uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: 17
+          java-version: 21
+          cache: gradle
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Create Android project
-        run: npx expo prebuild --platform android --no-install
+      - name: Work out URL, version and build type
+        id: cfg
         env:
-          CI: 1
+          INPUT_URL: ${{ github.event.inputs.app_url }}
+          INPUT_TYPE: ${{ github.event.inputs.build_type }}
+          VAR_URL: ${{ vars.ROSIER_APP_URL }}
+        run: |
+          URL="${INPUT_URL:-$VAR_URL}"
+          URL="${URL%/}"
+          if [ -z "$URL" ]; then
+            echo "::error::Set the ROSIER_APP_URL repository variable (Settings → Secrets and variables → Actions → Variables), e.g. https://people.rosierfoods.com"
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && [[ "$URL" != https://* ]]; then
+            echo "::error::ROSIER_APP_URL must start with https:// (got $URL)"
+            exit 1
+          fi
 
-      - name: Build APK
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+            TYPE=release
+          else
+            VERSION="$(node -p "require('./package.json').version")"
+            if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then TYPE="${INPUT_TYPE:-debug}"; else TYPE=debug; fi
+          fi
+
+          {
+            echo "url=$URL"
+            echo "version=$VERSION"
+            echo "code=$(( GITHUB_RUN_NUMBER + 100 ))"
+            echo "type=$TYPE"
+          } >> "$GITHUB_OUTPUT"
+          echo "Building $TYPE for $URL — version $VERSION ($(( GITHUB_RUN_NUMBER + 100 )))"
+
+      - name: Set up release signing
+        id: sign
+        if: steps.cfg.outputs.type != 'debug'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ] || [ -z "$KEYSTORE_PASSWORD" ] || [ -z "$KEY_ALIAS" ] || [ -z "$KEY_PASSWORD" ]; then
+            echo "::warning::Signing secrets are missing, so this run builds a debug test APK instead of a signed release. Run scripts/android-keystore.sh and add the 4 secrets."
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          KS="$RUNNER_TEMP/rosier-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KS"
+          {
+            echo "ANDROID_KEYSTORE_PATH=$KS"
+            echo "ANDROID_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD"
+            echo "ANDROID_KEY_ALIAS=$KEY_ALIAS"
+            echo "ANDROID_KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Sync web assets into the Android project
+        run: npm run mobile:sync
+        env:
+          ROSIER_APP_URL: ${{ steps.cfg.outputs.url }}
+
+      - name: Build
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=arm64-v8a,armeabi-v7a
         env:
-          NODE_ENV: production
+          ANDROID_VERSION_NAME: ${{ steps.cfg.outputs.version }}
+          ANDROID_VERSION_CODE: ${{ steps.cfg.outputs.code }}
+          TYPE: ${{ steps.cfg.outputs.type }}
+          SIGNED: ${{ steps.sign.outputs.signed }}
+        run: |
+          chmod +x gradlew
+          TASKS=""
+          if [ "$TYPE" = "debug" ] || [ "$TYPE" = "both" ] || [ "$SIGNED" != "true" ]; then TASKS="$TASKS assembleDebug"; fi
+          if [ "$TYPE" != "debug" ] && [ "$SIGNED" = "true" ]; then TASKS="$TASKS assembleRelease bundleRelease"; fi
+          ./gradlew $TASKS --no-daemon --stacktrace
 
-      - name: Upload APK
+      - name: Collect outputs
+        env:
+          VERSION: ${{ steps.cfg.outputs.version }}
+        run: |
+          mkdir -p dist
+          OUT=android/app/build/outputs
+          [ -f $OUT/apk/debug/app-debug.apk ]           && cp $OUT/apk/debug/app-debug.apk           "dist/rosier-people-$VERSION-test.apk"
+          [ -f $OUT/apk/release/app-release.apk ]       && cp $OUT/apk/release/app-release.apk       "dist/rosier-people-$VERSION.apk"
+          [ -f $OUT/bundle/release/app-release.aab ]    && cp $OUT/bundle/release/app-release.aab    "dist/rosier-people-$VERSION.aab"
+          ls -lh dist
+          [ -n "$(ls -A dist)" ] || { echo "::error::No APK/AAB was produced"; exit 1; }
+
+      - name: Upload build
         uses: actions/upload-artifact@v4
         with:
-          name: rosier-app-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: rosier-people-${{ steps.cfg.outputs.version }}-${{ steps.cfg.outputs.type }}
+          path: dist/*
           if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v') && steps.sign.outputs.signed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" dist/* --title "Rosier People $GITHUB_REF_NAME" --generate-notes
