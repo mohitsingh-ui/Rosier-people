@@ -75,8 +75,8 @@ jobs:
           URL="${INPUT_URL:-$VAR_URL}"
           URL="${URL%/}"
           if [ -z "$URL" ]; then
-            echo "::error::Set the ROSIER_APP_URL repository variable (Settings → Secrets and variables → Actions → Variables), e.g. https://people.rosierfoods.com"
-            exit 1
+            URL="https://people.rosierfoods.com"
+            echo "::notice::ROSIER_APP_URL repository variable not set, using $URL"
           fi
           if [ "$GITHUB_EVENT_NAME" != "workflow_dispatch" ] && [[ "$URL" != https://* ]]; then
             echo "::error::ROSIER_APP_URL must start with https:// (got $URL)"
